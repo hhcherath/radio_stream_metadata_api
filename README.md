@@ -47,8 +47,11 @@ json
 
 * Code Overview
 getRadioMetadata($stream_url): Fetches and parses metadata from the provided stream URL.
+
 splitTitleAndArtist($current_song): Splits the song title and artist based on common delimiters.
+
 fetchUrl($url): Fetches content from a URL using cURL.
+
 getAlbumArt($title, $artist): Retrieves album art from iTunes and Deezer APIs.
 
 * PHP 5.4 or higher.
