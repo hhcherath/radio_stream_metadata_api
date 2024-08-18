@@ -16,12 +16,12 @@ This script is designed to connect to a streaming radio URL and extract metadata
 
 1. **Upload the Script**
 
-   Place the `radio-metadata-api.php` file on your server.
+   Place the `radio-metadata-fetcher.php` file on your server.
 
 2. **Make a Request**
 
    Access the script via a web browser or a tool like `curl` with the following query parameter:
-   http://yourserver.com/radio-metadata-api.php?stream-url=<your-stream-url>
+   http://yourserver.com/radio-metadata-fetcher.php?stream-url=<your-stream-url>
 
 
 Replace `<your-stream-url>` with the URL of the streaming radio you want to get metadata from.
@@ -46,6 +46,7 @@ json
 }
 
 * Code Overview
+
 getRadioMetadata($stream_url): Fetches and parses metadata from the provided stream URL.
 
 splitTitleAndArtist($current_song): Splits the song title and artist based on common delimiters.
