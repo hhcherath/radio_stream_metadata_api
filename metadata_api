@@ -1,0 +1,155 @@
+<?php
+header('Content-Type: application/json');
+
+function getRadioMetadata($stream_url) {
+    if (!$stream_url) {
+        return ["error" => "Failed to fetch metadata."];
+    }
+
+    $options = [
+        "http" => [
+            "header" => "Icy-MetaData: 1\r\n"
+        ]
+    ];
+
+    $context = stream_context_create($options);
+    $stream = @fopen($stream_url, "r", false, $context);
+
+    if ($stream === false) {
+        return ["error" => "Failed to fetch metadata."];
+    }
+
+    $meta_interval = 0;
+    foreach ($http_response_header as $header) {
+        if (stripos($header, "icy-metaint") !== false) {
+            list(, $meta_interval) = explode(":", $header);
+            $meta_interval = (int)trim($meta_interval);
+            break;
+        }
+    }
+
+    if ($meta_interval > 0) {
+        $buffer = '';
+        while (strlen($buffer) < $meta_interval) {
+            $buffer .= fread($stream, $meta_interval - strlen($buffer));
+        }
+
+        $metadata_length = ord(fread($stream, 1));
+
+        if ($metadata_length > 0) {
+            $metadata = fread($stream, $metadata_length * 16);
+            if ($stream) {
+                fclose($stream);
+            }
+
+            if (preg_match("/StreamTitle='(.*?)';/", $metadata, $matches)) {
+                $current_song = htmlspecialchars_decode(trim($matches[1]));
+
+                if (empty($current_song)) {
+                    return ["title" => "", "artist" => "", "album_art_url" => ""];
+                }
+
+                list($artist, $title) = splitTitleAndArtist($current_song);
+                $album_art_url = getAlbumArt($title, $artist);
+                return ["title" => $title, "artist" => $artist, "album_art_url" => $album_art_url];
+            }
+        } else {
+            if ($stream) {
+                fclose($stream);
+            }
+            return ["error" => "Failed to fetch metadata."];
+        }
+    } else {
+        if ($stream) {
+            fclose($stream);
+        }
+        return ["error" => "Failed to fetch metadata."];
+    }
+}
+
+function splitTitleAndArtist($current_song) {
+    $delimiters = ['Now Playing: ', 'Playing Now: '];
+
+    foreach ($delimiters as $delimiter) {
+        if (strpos($current_song, $delimiter) !== false) {
+            list($artist, $title) = explode($delimiter, $current_song, 2);
+            return [trim($artist), trim($title)];
+        }
+    }
+
+    $parts = preg_split('/(\s-\s|\s~\s)/', $current_song);
+    $artist = $parts[0] ?? '';
+    $title = $parts[1] ?? '';
+    return [trim($artist), trim($title)];
+}
+
+function fetchUrl($url) {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http_code == 200) {
+        return $response;
+    } else {
+        return false;
+    }
+}
+
+function getAlbumArt($title, $artist) {
+    static $cache = [];
+
+    $cache_key = "{$artist} {$title}";
+    if (isset($cache[$cache_key])) {
+        return $cache[$cache_key];
+    }
+
+    $itunes_url = "https://itunes.apple.com/search?term=" . urlencode($cache_key) . "&limit=1&media=music";
+    $deezer_url = "https://api.deezer.com/search?q=" . urlencode($cache_key) . "&limit=1";
+
+    $itunes_response = fetchUrl($itunes_url);
+    if ($itunes_response !== false) {
+        $itunes_data = json_decode($itunes_response, true);
+        if (!empty($itunes_data['results'][0]['artworkUrl100'])) {
+            return $cache[$cache_key] = $itunes_data['results'][0]['artworkUrl100'];
+        }
+    }
+
+    $deezer_response = fetchUrl($deezer_url);
+    if ($deezer_response !== false) {
+        $deezer_data = json_decode($deezer_response, true);
+        if (!empty($deezer_data['data'][0]['album']['cover'])) {
+            return $cache[$cache_key] = $deezer_data['data'][0]['album']['cover'];
+        }
+    }
+
+    return $cache[$cache_key] = "/assets/images/album-default-icon.jpg";
+}
+
+if (!isset($_GET['stream-url']) || empty($_GET['stream-url'])) {
+    echo json_encode(["error" => "Failed to fetch metadata."]);
+    exit;
+}
+
+$stream_url = $_GET['stream-url'];
+$current_song = getRadioMetadata($stream_url);
+
+if (isset($current_song['error'])) {
+    echo json_encode(["error" => $current_song['error']]);
+    exit;
+}
+
+$response = [];
+
+if (!empty($current_song['title']) && !empty($current_song['artist'])) {
+    $response["current_track"] = [
+        "title" => html_entity_decode($current_song['title'] ?? ""),
+        "artist" => html_entity_decode($current_song['artist'] ?? ""),
+        "album_art_url" => $current_song['album_art_url'] ?? ""
+    ];
+}
+
+echo json_encode($response);
+?>
